@@ -5,6 +5,7 @@ sys.path.append(".")
 
 from calcs_tests import TestDamageCalculator
 from calcs_tests.armor_mitigation_tests import TestArmorMitigation
+from calcs_tests.caching_calculator_tests import TestCachingCalculator
 from calcs_tests.rogue_tests import TestRogueDamageCalculator
 from calcs_tests.rogue_tests import TestRogueDamageCalculatorLevels
 from calcs_tests.rogue_tests.Aldriana_tests import TestAldrianasRogueDamageCalculator
