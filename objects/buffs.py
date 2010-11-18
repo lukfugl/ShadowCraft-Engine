@@ -1,10 +1,10 @@
 from core import exceptions
+from calcs.caching_calculator import CachingCalculator
 
 class InvalidBuffException(exceptions.InvalidInputException):
     pass
 
-
-class Buffs(object):
+class Buffs(CachingCalculator):
     # Will need to add the caster/tank (de)buffs at some point if we want to
     # support other classes with this framework.
 
@@ -24,7 +24,9 @@ class Buffs(object):
         'agi_flask',                        # Flask of the Winds
         'guild_feast'                       # Seafood Magnifique Feast
     ])
-    
+
+    __parameters__ = frozenset(allowed_buffs | set(['level']))
+
     str_and_agi_buff_values = {80:155, 85:549}
 
     def __init__(self, *args, **kwargs):
@@ -34,72 +36,63 @@ class Buffs(object):
             setattr(self, buff, True)
         self.level = kwargs.get('level', 85)
 
-    def __getattr__(self, name):
-        # Any buff we haven't assigned a value to, we don't have.
-        if name in self.allowed_buffs:
-            return False
-        object.__getattribute__(self, name)
-    
-    def __setattr__(self, name, value):
-        object.__setattr__(self, name, value)
-        if name == 'level':
-            self._set_constants_for_level()
-    
-    def _set_constants_for_level(self):
-        try:
-            self.str_and_agi_buff_bonus = self.str_and_agi_buff_values[self.level]
-        except KeyError as e:
-            raise exceptions.InvalidLevelException(_('No conversion factor available for level {level}').format(level=self.level))
+    def calculate_str_and_agi_buff_bonus(self):
+        if self.level in self.str_and_agi_buff_values:
+            return self.str_and_agi_buff_values[self.level]
+        else:
+            raise exceptions.InvalidLevelException(
+                    _('No conversion factor available for level {level}').
+                    format(level=self.level))
 
-    
-    def stat_multiplier(self):
+    def calculate_stat_multiplier(self):
         if self.stat_multiplier_buff:
             return 1.05
-        return 1
+        else:
+            return 1
 
-    def all_damage_multiplier(self):
+    def calculate_all_damage_multiplier(self):
         if self.all_damage_buff:
             return 1.03
         else:
             return 1
 
-    def spell_damage_multiplier(self):
+    def calculate_spell_damage_multiplier(self):
         if self.spell_damage_debuff:
-            return 1.08 * self.all_damage_multiplier()
+            return 1.08 * self.all_damage_multiplier
         else:
-            return self.all_damage_multiplier()
+            return self.all_damage_multiplier
 
-    def physical_damage_multiplier(self):
+    def calculate_physical_damage_multiplier(self):
         if self.physical_vulnerability_debuff:
-            return 1.04 * self.all_damage_multiplier()
+            return 1.04 * self.all_damage_multiplier
         else:
-            return self.all_damage_multiplier()
+            return self.all_damage_multiplier
 
-    def bleed_damage_multiplier(self):
+    def calculate_bleed_damage_multiplier(self):
         if self.bleed_damage_debuff:
-            return 1.3 * self.physical_damage_multiplier()
+            return 1.3 * self.physical_damage_multiplier
         else:
-            return self.physical_damage_multiplier()
+            return self.physical_damage_multiplier
 
-    def attack_power_multiplier(self):
+    def calculate_attack_power_multiplier(self):
         if self.attack_power_buff:
             return 1.1
         else:
             return 1
 
-    def melee_haste_multiplier(self):
+    def calculate_melee_haste_multiplier(self):
         if self.melee_haste_buff:
             return 1.1
         else:
             return 1
 
-    def buff_str(self):
+    def calculate_buff_str(self):
         if self.str_and_agi_buff:
             return self.str_and_agi_buff_bonus
         else:
             return 0
 
-    def buff_agi(self):
+    def calculate_buff_agi(self):
         if self.agi_flask:
             flask_agi = 300
         else:
@@ -115,20 +108,20 @@ class Buffs(object):
         else:
             return 0 + food_agi + flask_agi
 
-    def buff_all_crit(self):
+    def calculate_buff_all_crit(self):
         if self.crit_chance_buff:
             return .05
         else:
             return 0
 
-    def buff_spell_crit(self):
+    def calculate_buff_spell_crit(self):
         if self.spell_crit_debuff:
             return .05
         else:
             return 0
 
-    def armor_reduction_multiplier(self):
+    def calculate_armor_reduction_multiplier(self):
         if self.armor_debuff:
-            return 0.88 
+            return 0.88
         else:
             return 1

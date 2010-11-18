@@ -171,15 +171,15 @@ class DamageCalculator(object):
         return hit_chance
 
     def buff_melee_crit(self):
-        return self.buffs.buff_all_crit()
+        return self.buffs.buff_all_crit
 
     def buff_spell_crit(self):
-        return self.buffs.buff_spell_crit() + self.buffs.buff_all_crit()
+        return self.buffs.buff_spell_crit + self.buffs.buff_all_crit
 
     def target_armor(self, armor=None):
         # Passes base armor reduced by armor debuffs or overridden armor
         if armor is None:
-            return self.buffs.armor_reduction_multiplier() * self.TARGET_BASE_ARMOR
+            return self.buffs.armor_reduction_multiplier * self.TARGET_BASE_ARMOR
         else:
             return armor
 
@@ -191,8 +191,8 @@ class DamageCalculator(object):
             raise exceptions.InvalidInputException(_('Attacks cannot benefit from more than one type of raid damage multiplier'))
         armor_override = self.target_armor(armor)
         if is_spell:
-            return self.buffs.spell_damage_multiplier()
+            return self.buffs.spell_damage_multiplier
         elif is_bleed:
-            return self.buffs.bleed_damage_multiplier()
+            return self.buffs.bleed_damage_multiplier
         elif is_physical:
-            return self.buffs.physical_damage_multiplier() * self.armor_mitigation_multiplier(armor_override)
+            return self.buffs.physical_damage_multiplier * self.armor_mitigation_multiplier(armor_override)

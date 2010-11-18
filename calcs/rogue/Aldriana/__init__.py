@@ -109,7 +109,7 @@ class AldrianasRogueDamageCalculator(RogueDamageCalculator):
             self.bonus_energy_regen -= 15./(30+self.settings.response_time)
 
         self.base_stats = {
-            'agi': self.stats.agi + self.buffs.buff_agi() + self.race.racial_agi,
+            'agi': self.stats.agi + self.buffs.buff_agi + self.race.racial_agi,
             'ap': self.stats.ap + 140,
             'crit': self.stats.crit,
             'haste': self.stats.haste,
@@ -124,14 +124,14 @@ class AldrianasRogueDamageCalculator(RogueDamageCalculator):
                 else:
                     self.base_stats[stat] += (value * duration) * 1.0 / self.settings.duration
 
-        self.agi_multiplier = self.buffs.stat_multiplier() * self.stats.gear_buffs.leather_specialization_multiplier()
+        self.agi_multiplier = self.buffs.stat_multiplier * self.stats.gear_buffs.leather_specialization_multiplier()
 
-        self.base_strength = self.stats.str + self.buffs.buff_str() + self.race.racial_str
-        self.base_strength *= self.buffs.stat_multiplier()
+        self.base_strength = self.stats.str + self.buffs.buff_str + self.race.racial_str
+        self.base_strength *= self.buffs.stat_multiplier
 
         self.relentless_strikes_energy_return_per_cp = [0, 1.75, 3.5, 5][self.talents.relentless_strikes]
 
-        self.base_speed_multiplier = 1.4 * self.buffs.melee_haste_multiplier() * self.get_heroism_haste_multiplier()
+        self.base_speed_multiplier = 1.4 * self.buffs.melee_haste_multiplier * self.get_heroism_haste_multiplier()
 
     def get_proc_damage_contribution(self, proc, proc_count, current_stats):
         base_damage = proc.value
@@ -152,7 +152,7 @@ class AldrianasRogueDamageCalculator(RogueDamageCalculator):
     def get_damage_breakdown(self, current_stats, attacks_per_second, crit_rates, damage_procs):
         # Vendetta may want to be handled elsewhere.
         average_ap = current_stats['ap'] + 2 * current_stats['agi'] + self.base_strength
-        average_ap *= self.buffs.attack_power_multiplier()
+        average_ap *= self.buffs.attack_power_multiplier
         if self.talents.is_combat_rogue():
             average_ap *= 1.2
         average_ap *= (1 + .01 * self.talents.savage_combat)
