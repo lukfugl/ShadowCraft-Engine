@@ -15,6 +15,89 @@ class InvalidCalculatorSpecification(Exception):
     def __str__(self):
         return str(self.error_msg)
 
+class CalculationCache(object):
+    """ Contains the cache, dependency graph, and current call stack.
+    
+    The cache is a simple dictionary of keys to cached values. get(...) and
+    store(...) allow access to the cache; has_valid(...) tests if a key has
+    been set and has not been invalidated since. Storing a value for a key
+    will invalidate any keys dependent on that key (recursively).
+
+    The dependency graph links keys to dependent keys, so that if the
+    former is changed, the latter can be automatically invalidated for
+    eventual recomputation. Dependencies can be added to this graph as they
+    are discovered with add_dependency(...).
+
+    The call stack holds a list of calculations currently being performed.
+    This serves two purposes: the top of the stack can tell us the current
+    caller, so that we can discover the dependency graph by usage, and the
+    full stack lets us detect recursive dependencies. caller(...),
+    push_caller(...), and pop_caller(...) gives convenient access to the
+    head of the stack, and call_stack(...) allows full access.
+
+    Keys and call stack entries are both (obj, name) tuples. This allows
+    inter-object dependencies to be recorded. Unfortunately, it also means the
+    CalculationCache is bigger than any one object, and must therefore be
+    managed independently of any one object or class.
+    """
+
+    def __init__(self):
+        self._values = dict()
+        self._dependency_graph = dict()
+        self._call_stack = list()
+
+    def get(self, key):
+        """ Lookup the cached value for key, if any. """
+        if self.has_valid(key):
+            return self._values[key]
+        else:
+            return None
+
+    def store(self, key, value):
+        """ Store value in the cache under key, invalidating any dependent keys. """
+        self._invalidate(key)
+        self._values[key] = value
+
+    def has_valid(self, key):
+        """ Query whether there is a cached value for key. """
+        return key in self._values
+
+    def _invalidate(self, key):
+        # invalidate by removing the key
+        if key in self._values:
+            del self._values[key]
+        # recursively invalidate any dependent keys
+        if key in self._dependency_graph:
+            for other in self._dependency_graph[key]:
+                self._invalidate(other)
+
+    def add_dependency(self, key1, key2):
+        """ Record key1 as dependent on key2. """
+        if key2 not in self._dependency_graph:
+            self._dependency_graph[key2] = set()
+        if key1 not in self._dependency_graph[key2]:
+            self._dependency_graph[key2].add(key1)
+
+    def caller(self):
+        """ Return the top element of the call stack. """
+        if len(self._call_stack) == 0:
+            return None
+        else:
+            return self._call_stack[-1]
+
+    def push_caller(self, caller):
+        """ Add an element to the top of the call stack. """
+        self._call_stack.append(caller)
+
+    def pop_caller(self):
+        """ Remove the top element of the call stack. """
+        if len(self._call_stack) > 0:
+            self._call_stack.pop()
+
+    def call_stack(self):
+        """ Return the full call stack. """
+        return self._call_stack
+
 class CachingCalculatorMeta(type):
     """ Meta-class for caching calculators.
     
@@ -27,183 +110,106 @@ class CachingCalculatorMeta(type):
      * A read-only calculated property is created corresponding to each method
        starting with the prefix 'calculate_'.
 
-    The parameter properties are those which are not calculated but which you
-    wish to have trigger recalculation of any potentially dependent calculated
+    Parameter properties are those which are not calculated but which you wish
+    to have trigger recalculation of any potentially dependent calculated
     properties.
 
-    The calculated properties perform the calculations in the corresponding
+    Calculated properties perform the calculations in the corresponding
     'calculate_X' method on demand and cache the results. The dependencies of
     the calculation are automatically discovered and if any of the properties
     upon which the calculation are dependent change, the cache will be
     invalidated to allow recalculation (on demand).
 
-    Primary drawback/gotcha: only explicit parameter properties or calculated
-    properties on the same object are included in the dependency graph. If you
-    have a calculation that depends on a 'foreign' parameter/calculation, you
-    will need to set up a 'native' parameter to represent it and manage the
-    connection out-of-band.
+    Drawback/gotcha: parameterized calculations (i.e. a calculate_X method that
+    takes arguments) are not currently supported.
     """
-
-    class CalculationCache(object):
-        """ Contains the cache, dependency graph, and current call stack.
-        
-        The cache is a simple dictionary of keys to cached values. get(...) and
-        store(...) allow access to the cache; has_valid(...) tests if a key has
-        been set and has not been invalidated since. Storing a value for a key
-        will invalidate any keys dependent on that key (recursively).
-
-        The dependency graph links keys to dependent keys, so that if the
-        former is changed, the latter can be automatically invalidated for
-        eventual recomputation. Dependencies can be added to this graph as they
-        are discovered with add_dependency(...).
-
-        The call stack holds a list of calculations currently being performed.
-        This serves two purposes: the top of the stack can tell us the current
-        caller, so that we can discover the dependency graph by usage, and the
-        full stack lets us detect recursive dependencies. caller(...),
-        push_caller(...), and pop_caller(...) gives convenient access to the
-        head of the stack, and call_stack(...) allows full access.
-        """
-
-        def __init__(self):
-            self._values = dict()
-            self._dependency_graph = dict()
-            self._call_stack = list()
-
-        def get(self, key):
-            """ Lookup the cached value for key, if any. """
-            if self.has_valid(key):
-                return self._values[key]
-            else:
-                return None
-
-        def store(self, key, value):
-            """ Store value in the cache under key, invalidating any dependent keys. """
-            self._invalidate(key)
-            self._values[key] = value
-
-        def has_valid(self, key):
-            """ Query whether there is a cached value for key. """
-            return key in self._values
-
-        def _invalidate(self, key):
-            # invalidate by removing the key
-            if key in self._values:
-                del self._values[key]
-            # recursively invalidate any dependent keys
-            if key in self._dependency_graph:
-                for other in self._dependency_graph[key]:
-                    self._invalidate(other)
-
-        def add_dependency(self, key1, key2):
-            """ Record key1 as dependent on key2. """
-            if key2 not in self._dependency_graph:
-                self._dependency_graph[key2] = list()
-            if key1 not in self._dependency_graph[key2]:
-                self._dependency_graph[key2].append(key1)
-
-        def caller(self):
-            """ Return the top element of the call stack. """
-            if len(self._call_stack) == 0:
-                return None
-            else:
-                return self._call_stack[-1]
-
-        def push_caller(self, caller):
-            """ Add an element to the top of the call stack. """
-            self._call_stack.append(caller)
-
-        def pop_caller(self):
-            """ Remove the top element of the call stack. """
-            if len(self._call_stack) > 0:
-                self._call_stack = self._call_stack[:-1]
-
-        def call_stack(self):
-            """ Return the full call stack. """
-            return self._call_stack
-
-    class CacheProperty(object):
-        """ An auto-instantiating CalculationCache object. """
-        def __get__(self, obj, objtype):
-            try:
-                return obj._cache_object
-            except AttributeError:
-                obj._cache_object = CachingCalculatorMeta.CalculationCache()
-                return obj._cache_object
 
     class ParameterProperty(object):
         """ A non-calculated value upon which calculated values might depend. """
-        def __init__(self, name):
+        def __init__(self, name, cache):
             self.name = name
+            self.cache = cache
 
         def __get__(self, obj, objtype):
+            cache_key = (obj, self.name)
+
             # if this property was accessed during the caller's calculation,
             # the caller must be dependent on this property
-            cache = obj._cache
-            caller = cache.caller()
+            caller = self.cache.caller()
             if caller != None:
-                cache.add_dependency(caller, self.name)
+                self.cache.add_dependency(caller, cache_key)
 
             # populate the cache with a default value if this hasn't been set
             # yet (it'll probably cause an error later, but we'll give other
             # code the chance to handle it)
-            if not cache.has_valid(self.name):
-                cache.store(self.name, None)
-            return cache.get(self.name)
+            if not self.cache.has_valid(cache_key):
+                self.cache.store(cache_key, None)
+            return self.cache.get(cache_key)
 
         def __set__(self, obj, value):
             # although not calculated, these properties are also stored in the
             # cache to facilitate invalidation
-            cache = obj._cache
-            cache.store(self.name, value)
+            cache_key = (obj, self.name)
+            self.cache.store(cache_key, value)
 
     class CalculatedProperty(object):
         """ A calculated value (upon which other calculated values might depend). """
-        def __init__(self, name, calculator):
+        def __init__(self, name, calculator, cache):
             self.name = name
             self.calculator = calculator
+            self.cache = cache
 
         def __get__(self, obj, objtype):
+            cache_key = (obj, self.name)
+
             # if this property was accessed during the caller's calculation,
             # the caller must be dependent on this property
-            cache = obj._cache
-            caller = cache.caller()
+            caller = self.cache.caller()
             if caller != None:
-                cache.add_dependency(caller, self.name)
+                self.cache.add_dependency(caller, cache_key)
 
             # just return the cached value if we have a valid one
-            if cache.has_valid(self.name):
-                return cache.get(self.name)
+            if self.cache.has_valid(cache_key):
+                return self.cache.get(cache_key)
 
             # no cached value, calculate it. but first make sure we're not
             # already in the middle of trying to calculate it
-            if self.name in cache.call_stack():
-                call_stack = cache.call_stack()
-                call_stack.append(self.name)
+            if cache_key in self.cache.call_stack():
+                call_stack = self.cache.call_stack()
+                call_stack.append(cache_key)
                 raise InvalidCalculatorSpecification(
                     _("recursive dependency detected: {call_stack}").
                     format(call_stack=call_stack))
 
             # add ourselves to the call stack while we calculate it
-            cache.push_caller(self.name)
+            self.cache.push_caller(cache_key)
             value = self.calculator(obj)
-            cache.pop_caller()
+            self.cache.pop_caller()
 
             # store the calculated value and return it
-            cache.store(self.name, value)
+            self.cache.store(cache_key, value)
             return value
 
     def __new__(meta, classname, bases, class_dict):
-        # set up the auto-constructing calculation cache with a consistent name
-        if '_cache' in class_dict:
+        # find the cache to use
+        if '__cache__' in class_dict:
+            cache = class_dict['__cache__']
+        else:
+            for base in bases:
+                try:
+                    cache = base.__cache__
+                    break
+                except AttributeError:
+                    continue
+        if cache == None:
             raise InvalidCalculatorSpecification(
-                _("{key} already exists in the class dictionary.").
-                format(key='_cache'))
-        class_dict['_cache'] = meta.CacheProperty()
+                _("{key} either not present in class dictionary or in any " +
+                  "base class, or has value {value}.").
+                format(key='__cache__', value='None'))
 
         # create descriptors for the parameters which need to show up in the
         # dependency graph
-        parameters = class_dict.get('__parameters__', list())
+        parameters = class_dict.get('__parameters__', frozenset())
         for name in parameters:
             # avoid name conflicts
             if name in class_dict:
@@ -211,7 +217,7 @@ class CachingCalculatorMeta(type):
                     _("{key} is listed in {parameters_key}, but that key " +
                       "already exists in the class dictionary.").
                     format(key=name, parameters_key='__parameters__'))
-            class_dict[name] = meta.ParameterProperty(name)
+            class_dict[name] = meta.ParameterProperty(name, cache)
 
         # create properties for the various calculations
         for name, value in class_dict.items():
@@ -226,10 +232,15 @@ class CachingCalculatorMeta(type):
                           "{parameters_key}.").
                         format(method=name, key=new_name,
                             parameters_key='__parameters__'))
-                class_dict[new_name] = meta.CalculatedProperty(new_name, value)
+                class_dict[new_name] = meta.CalculatedProperty(new_name, value, cache)
 
         return type.__new__(meta, classname, bases, class_dict)
 
 class CachingCalculator(object):
-    """ Base class that incorporates the CachingCalculatorMeta class. """
+    """ Base class that incorporates the CachingCalculatorMeta class.
+
+    All instances of this class -- or, more particularly, its subclasses --
+    share a cache to facilitate inter-object dependency tracking.
+    """
     __metaclass__ = CachingCalculatorMeta
+    __cache__ = CalculationCache()
